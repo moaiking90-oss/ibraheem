@@ -1,0 +1,153 @@
+# Working title: "Defuse Craft" (CS2 rules + maps inside Minecraft: Java)
+
+Paste this whole file to an agent running on your PC (Claude Code or Codex) that has your Melty connection. The Melty and universal-modder instructions you pasted earlier still apply; this file answers all the design questions so the agent should not ask any more.
+
+## 1. Design decisions (locked)
+- Mode: single player vs bots. No multiplayer, so no recipe.multiplayer.
+- Primary game (role "primary"): Minecraft: Java Edition, Fabric via portable Prism Launcher instance, as in SkyCraft (mashup_info skycraft).
+- Companion game (role "companion"): Counter-Strike 2, never launched, never modded, never copied. Its folder comes in as {game:counter-strike-2}.
+- Bodies and combat: Minecraft skins and Minecraft melee/bow combat. No CS2 agents or guns.
+- CS2 brings: (a) one map layout, (b) rules, (c) sounds and music. Maps and audio are read at runtime from the player's own CS2 install.
+- First version: one map, one bomb site, first to 4 rounds, 5v5 (player + 4 bot teammates vs 5 bots).
+- License: MIT. Remixing allowed. Credit: Melty account name.
+- Do not ship any CS2 or Minecraft assets. Ship only the mod jar, config and the bundled libraries whose licenses allow it.
+
+## 2. Listing draft (adjust after the real build exists)
+- Title: Defuse Craft
+- Tagline: Plant and defuse the bomb on a CS2 map rebuilt in Minecraft blocks, with Minecraft swords and bows.
+- Description: Play a bomb-defusal match against bots as a normal Minecraft character. A buy phase lets you spend round money on Minecraft gear, then you fight over a bomb site on a CS2 layout rebuilt from your own Counter-Strike 2 install, with CS2's sound effects and round music. Requires Minecraft: Java Edition and Counter-Strike 2.
+
+## 3. Sheets (source of truth; change the sheet before the code)
+Status values: `todo` | `verify` (needs checking against the real game files) | `done`.
+
+### sheet_games.json
+```json
+[
+  {"slug":"minecraft-java","role":"primary","loader":"fabric","delivery":"prism-instance","status":"todo"},
+  {"slug":"counter-strike-2","role":"companion","loader":null,"delivery":"read-only from {game:counter-strike-2}","status":"todo"}
+]
+```
+
+### sheet_maps.json
+| id | source (in CS2 install) | siteCount | scale | voxelSize | spawnT | spawnCT | siteA | status |
+|---|---|---|---|---|---|---|---|---|
+```json
+[
+  {"id":"map_dust2","source":"{game:counter-strike-2}/game/csgo/maps/de_dust2.vpk","siteCount":1,"activeSite":"A","scale":"verify","voxelSize":1,"spawnT":"verify","spawnCT":"verify","siteA":"verify","cacheFolder":"{minecraft-instance}/saves/DefuseCraft","status":"verify"}
+]
+```
+Notes: voxelize the map's collision/world geometry once on first launch, cache the result in the player's own save (not in the upload), and trim to the one bomb site. Unfilled cells are filled by inspecting the real file. If the map's geometry can't be read, pick another official map that can; tell the user in one line.
+
+### sheet_bots.json
+| id | team | role | weapon | armor | aim | reaction | hp | status |
+|---|---|---|---|---|---|---|---|---|
+```json
+[
+  {"id":"bot_t_1","team":"T","role":"planter","weapon":"iron_sword","armor":"iron","aim":0.6,"reaction":0.5,"hp":20,"status":"todo"},
+  {"id":"bot_t_2","team":"T","role":"entry","weapon":"bow","armor":"leather","aim":0.5,"reaction":0.6,"hp":20,"status":"todo"},
+  {"id":"bot_t_3","team":"T","role":"support","weapon":"stone_sword","armor":"chain","aim":0.5,"reaction":0.6,"hp":20,"status":"todo"},
+  {"id":"bot_t_4","team":"T","role":"lurker","weapon":"bow","armor":"leather","aim":0.55,"reaction":0.55,"hp":20,"status":"todo"},
+  {"id":"bot_t_5","team":"T","role":"entry","weapon":"stone_axe","armor":"chain","aim":0.5,"reaction":0.5,"hp":20,"status":"todo"},
+  {"id":"bot_ct_1","team":"CT","role":"defuser","weapon":"iron_sword","armor":"iron","aim":0.6,"reaction":0.5,"hp":20,"status":"todo"},
+  {"id":"bot_ct_2","team":"CT","role":"anchor","weapon":"bow","armor":"iron","aim":0.55,"reaction":0.6,"hp":20,"status":"todo"},
+  {"id":"bot_ct_3","team":"CT","role":"rotator","weapon":"stone_sword","armor":"chain","aim":0.5,"reaction":0.6,"hp":20,"status":"todo"},
+  {"id":"bot_ct_4","team":"CT","role":"anchor","weapon":"bow","armor":"leather","aim":0.5,"reaction":0.55,"hp":20,"status":"todo"}
+]
+```
+The human player takes the 5th CT slot (default) or the T slot if the player chooses T. Bots use Minecraft pathfinding over the voxelized map plus waypoint nodes derived from the map. Skins: default Minecraft skins tinted by team (T = orange, CT = blue).
+
+### sheet_shop.json
+| id | name | cost | slot | effect | status |
+|---|---|---|---|---|---|
+```json
+[
+  {"id":"w_stone_sword","name":"Stone Sword","cost":200,"slot":"melee","effect":"minecraft:stone_sword","status":"todo"},
+  {"id":"w_iron_sword","name":"Iron Sword","cost":700,"slot":"melee","effect":"minecraft:iron_sword","status":"todo"},
+  {"id":"w_axe","name":"Iron Axe","cost":900,"slot":"melee","effect":"minecraft:iron_axe","status":"todo"},
+  {"id":"w_bow","name":"Bow + 16 arrows","cost":800,"slot":"ranged","effect":"minecraft:bow","status":"todo"},
+  {"id":"a_chain","name":"Chain Armor","cost":650,"slot":"armor","effect":"chainmail set","status":"todo"},
+  {"id":"a_iron","name":"Iron Armor","cost":1000,"slot":"armor","effect":"iron set","status":"todo"},
+  {"id":"u_apple","name":"Golden Apple","cost":400,"slot":"utility","effect":"minecraft:golden_apple","status":"todo"},
+  {"id":"u_shield","name":"Shield","cost":300,"slot":"utility","effect":"minecraft:shield","status":"todo"},
+  {"id":"u_kit","name":"Defuse Kit","cost":400,"slot":"utility","effect":"halves defuse time (CT only)","status":"todo"}
+]
+```
+
+### sheet_rules.json
+| key | value | notes |
+|---|---|---|
+```json
+{
+  "roundsToWin": 4,
+  "buyPhaseSeconds": 15,
+  "roundSeconds": 115,
+  "bombTimerSeconds": 40,
+  "plantSeconds": 3,
+  "defuseSeconds": 10,
+  "defuseSecondsWithKit": 5,
+  "startMoney": 800,
+  "winReward": 3250,
+  "lossRewardBase": 1400,
+  "lossRewardStep": 500,
+  "lossRewardMax": 3400,
+  "killReward": 300,
+  "plantReward": 800,
+  "maxMoney": 16000,
+  "friendlyFire": false,
+  "respawn": "next round only",
+  "tAllEliminatedAfterPlant": "bomb still counts"
+}
+```
+Win conditions: T win by detonating the bomb or eliminating CT before a plant; CT win by defusing, eliminating T (if no bomb planted), or time expiring without a plant. The bomb is a custom block placed at the site with a timer and a visible countdown.
+
+### sheet_sounds.json
+| id | event | source in CS2 install | decode | status |
+|---|---|---|---|---|
+```json
+[
+  {"id":"s_plant","event":"bomb planted","source":"verify (soundevents in pak01 VPK)","decode":"runtime","status":"verify"},
+  {"id":"s_beep","event":"bomb beep","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_defuse","event":"defuse start/finish","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_explode","event":"bomb explosion","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_roundstart","event":"round start","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_roundwin_t","event":"T round win","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_roundwin_ct","event":"CT round win","source":"verify","decode":"runtime","status":"verify"},
+  {"id":"s_mvp_music","event":"round-end music","source":"verify","decode":"runtime","status":"verify"}
+]
+```
+Read audio from CS2's VPK archives at runtime, decode it, and play it through Minecraft's sound system. Nothing is extracted into the upload. If a sound can't be found or decoded, skip it silently and log it.
+
+### sheet_systems.json (hooks into Minecraft)
+| id | hook | mechanism | status |
+|---|---|---|---|
+```json
+[
+  {"id":"h_world","hook":"load voxelized map into a void-world save","mechanism":"Fabric world gen / chunk loader","status":"todo"},
+  {"id":"h_bots","hook":"spawn bot players","mechanism":"custom entity AI or fake player","status":"todo"},
+  {"id":"h_round","hook":"round state machine","mechanism":"server tick loop","status":"todo"},
+  {"id":"h_shop","hook":"buy menu","mechanism":"custom screen + keybind","status":"todo"},
+  {"id":"h_bomb","hook":"plant / defuse interaction","mechanism":"custom block + hold-use","status":"todo"},
+  {"id":"h_hud","hook":"money, timer, score, bomb status","mechanism":"HUD overlay","status":"todo"},
+  {"id":"h_cs2files","hook":"find CS2 folder","mechanism":"melty.properties / env var from {game:counter-strike-2}","status":"todo"},
+  {"id":"h_test","hook":"test mode for Melty test_release","mechanism":"recipe test.checks (round starts, bomb planted, round ends)","status":"todo"}
+]
+```
+
+## 4. Preflight (run before every build)
+1. Overlay all sheets and list every cell still `todo`/`verify` or unfilled.
+2. Check every cross-reference: bot weapon/armor ids exist in the shop sheet; sound ids used in rules exist in the sounds sheet; map id and spawn/site cells are filled.
+3. Fix those, then build. Build only on a clean preflight.
+
+## 5. Order of work for the agent
+1. Connect to Melty, run list_my_mods, search_mashups, game_info for both games, mashup_info skycraft.
+2. Locate both installs on the PC (Steam library folders). Read CS2's folder in place; never copy from it.
+3. Set up universal-modder and a Fabric dev workspace. Install what's needed from official sources and tell the user.
+4. Fill all `verify` cells from the real files, starting with the map and sounds.
+5. Build the mod, then run it in Minecraft and capture a screenshot or clip showing a buy phase or a bomb plant on the rebuilt map (game window only, no tokens or private windows).
+6. Run inspect_package, validate_recipe, one_click_check (with the feature list above as `says`), create_mod (MIT, remix allowed), uploads, submit_release, add_screenshot, test_release, then summarize and ask whether to publish.
+7. Recipe: Minecraft primary with a Prism instance (`mmc-pack.json` naming Fabric, mod in the instance's `mods` folder, recipe.setup so the player signs in once); CS2 companion; no recipe.together.
+
+## 6. Risks to report to the user in one line if they appear
+- CS2's map or audio formats can't be read at runtime, so the map or sounds change.
+- A bundled library has a license that doesn't allow sharing, so the mod works without it.
+- Melty's one_click_check blocks the release, so fix what it lists.
